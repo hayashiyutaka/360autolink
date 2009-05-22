@@ -3,7 +3,6 @@ window.onload = function()
 {
 try
 {
-	//temp
 	//return 0;
 	
 	var page = "/webopac/147";
