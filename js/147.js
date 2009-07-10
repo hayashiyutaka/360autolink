@@ -1,116 +1,94 @@
-//Controller
+/* ------------------------------------------------------------- */
+/*   Controller                                                  */
+/* ------------------------------------------------------------- */
 window.onload = function()
 {
 try
 {
-	//return 0;
-	
-	var page = "/webopac/147";
-	pageTracker._trackPageview(page);
-	
-	
-	//1. Scrape
-	var bibid = _getBibid();
-	var cattp = _getCattp();
-	page += "/" + cattp;
-	pageTracker._trackPageview(page);
-	
-	
-	if ((cattp !== 'SB') && (cattp !== 'EJ')) return 0;
-	
-	var issn = _getISSN();
-	page += "/" + (issn ? "issn" : "noissn");
-	pageTracker._trackPageview(page);
-	
-	var title = _getTitle();
-	
-	
-	if (!issn && title === "") return 0;
-	
-	
-	//2. Resolve (Call 360 LINK XML API)
-	var ar = new AutoResolver
-	({
-		api: location.protocol + "//" + location.hostname + "/cgi-bin/usr/147.cgi",
-		param: {
-			issn: issn,
-			title: title,
-			version: "1.0"
-		}
-	});
-	var array = ar.resolve();
-	
-	//3. Text
-	var arText = "";
-	if (array.length > 0)
+
+//Used in _checkBlack()
+BLACKLIST = [
+	'紀要',
+	'研究紀要',
+	'Bulletin',
+	'ESP'
+	//'Annual Report',
+	//'',
+];
+
+var page = "/webopac/147";
+pageTracker._trackPageview(page);
+var bib = kulineScrape();
+if (!bib.issn.match(/^[0-9X]{8}$/))	bib.issn = '';
+if (bib.isBlack)	bib.title = '';	//Fukuda
+page += "/" + bib.cattp;
+pageTracker._trackPageview(page);
+if ((bib.cattp !== 'SB') && (bib.cattp !== 'EJ')) return 0;
+page += "/" + (bib.issn !== '') ? "issn" : "noissn";
+pageTracker._trackPageview(page);
+//if (!bib.issn && (bib.title === '' || bib.isBlack)) return 0;
+if (bib.issn === '' && bib.title === '')	return 0;	//Fukuda
+
+var ar = new AutoResolver
+({
+	api: location.protocol + "//" + location.hostname + "/cgi-bin/usr/147.cgi",
+	param: {
+		issn: bib.issn,
+		title: bib.title,
+		version: "1.0"
+	},
+	callback: function (array)
 	{
+		if (array.length <= 0)	return 0;	//ok?
+		
 		page += "/view";
 		pageTracker._trackPageview(page);
 		
-		arText = "<p id=\"header\">電子ジャーナルが利用できます / E-Journals available here (<span id=\"what\"><a href=\"http://www.kulib.kyoto-u.ac.jp/modules/service/index.php?content_id=34\">What's this?</a></span>):</p>\n<ol>\n";
+		//Modelから返ってきたデータ(array)を使って作文し，
+		var arText = "<p id=\"header\">電子ジャーナルが利用できます / E-Journals available here (<span id=\"what\"><a href=\"http://www.kulib.kyoto-u.ac.jp/modules/service/index.php?content_id=34&from=ar\">What's this?</a></span>):</p>\n<ol>\n";
 		for (var i = 0; i < array.length; i++)
 		{
 			var h = array[i];
-			
 			var range = (h.startDate) ? h.startDate + " - " + h.endDate : "";
-			
 			arText += "<li>"
-					+ "<a onclick=\"javascript:pageTracker._trackPageview('" + page + "/fulltext');\" "
-					+ "href=\"http://tt2mx4dc7s.search.serialssolutions.com/log?L=TT2MX4DC7S&D=" + h.databaseId + "&U=" + h.url + "\">"
-					+ (range ? range : "Link to E-Journals")
-					+ "</a> <span class=\"provider\">(" + h.databaseName +  ")</span></li>\n";
+				+ "<a onclick=\"javascript:pageTracker._trackPageview('" + page + "/fulltext');\" "
+				+ "href=\"http://tt2mx4dc7s.search.serialssolutions.com/log?L=TT2MX4DC7S&D=" + h.databaseId + "&U=" + h.url + "\">"
+				+ ((range) ? range : "Link to E-Journals")
+				+ "</a> <span class=\"provider\">(" + h.databaseName +  ")</span></li>\n";
 		}
-		arText += "</ol>\n";
+		arText += "</ol>\n"
+			+ "<p id=\"footer\">"
+			+ "<a onclick=\"javascript:pageTracker._trackPageview('" + page + "/resolver');\" "
+			+ "href=\"http://tt2mx4dc7s.search.serialssolutions.com/?"
+			+ "url_ver=Z39.88-2004&"
+			+ "url_ctx_fmt=info%3Aofi%2Ffmt%3Akev%3Amtx%3Actx&"
+			+ "rfr_id=info%3Asid%2Fkyoto-u.ac.jp%3AwebOPAC&"
+			+ "rft_val_fmt=info%3Aofi%2Ffmt%3Akev%3Amtx%3Ajournal&"
+			+ "rft.genre=journal&"
+			+ "rfr_dat=" + bib.bibid + "&"
+			+ "rft.title=" + encodeURI(bib.title) + "&"
+			+ "rft.issn=" + bib.issn + "\">"
+			+ "<img src=\"usr/image/albutton2.gif\" height=\"15\" width=\"100\" alt=\"京大Article Linker\" title=\"More full text options\" />"
+			+ "</a>"
+			+ "</p>";
 		
-		arText += "<p id=\"footer\">"
-				+ "<a onclick=\"javascript:pageTracker._trackPageview('" + page + "/resolver');\" "
-				+ "href=\"http://tt2mx4dc7s.search.serialssolutions.com/?"
-				+ "url_ver=Z39.88-2004&"
-				+ "url_ctx_fmt=info%3Aofi%2Ffmt%3Akev%3Amtx%3Actx&"
-				+ "rfr_id=info%3Asid%2Fkyoto-u.ac.jp%3AwebOPAC&"
-				+ "rft_val_fmt=info%3Aofi%2Ffmt%3Akev%3Amtx%3Ajournal&"
-				+ "rft.genre=journal&"
-				+ "rfr_dat=" + bibid + "&"
-				+ "rft.title=" + encodeURI(title) + "&"
-				+ "rft.issn=" + issn + "\">"
-				+ "<img src=\"usr/image/albutton2.gif\" height=\"15\" width=\"100\" alt=\"京大Article Linker\" title=\"More full text options\" />"
-				+ "</a>"
-			
-				//+ "<br /><span id=\"what\"><a href=\"https://docs.google.com/Edit?id=dcqzjk6h_203cv7d83c9\">What's this?</a></span>"
-			
-				+ "</p>";
-	}
-	else
-	{
-		return 0;
-	}
-	
-	//4. Show
-	var layer = new TransparentLayerBuilder
-	({
-		root:
-		{
-			id: "autoResolver",
-			display: "none"
-		},
-		text:
-		{
-			id: "arText",
-			text: arText
-		},
-		btn:
-		{
-			id: "arBtn",
-			img:
-			{
+		//Viewに渡す
+		var layer = new TransparentLayerBuilder
+		({
+			ns: "autoResolver",
+			display: "none",
+			text: arText,
+			img: {
 				open: "usr/image/arrow1_sw.gif",
 				close: "usr/image/arrow1_ne.gif"
-			}
-		},
-		style: "usr/css/white-blue.css"
-	});
-	layer.build();
-	layer.show();
+			},
+			css: "usr/css/white-blue.css"
+		});
+		layer.build();
+		layer.show();
+	}
+});
+ar.resolve();
 }
 catch(e)
 {
@@ -119,15 +97,85 @@ catch(e)
 };
 
 /* ------------------------------------------------------------- */
+/*   Model                                                       */
+/* ------------------------------------------------------------- */
+//API(proxy)をコール，取得したXMLをJSONへ変換し，this.callbackに渡す
+var AutoResolver = function(s)
+{
+	this.api = s.api;
+	this.param = s.param;
+	this.callback = s.callback;
+};
+AutoResolver.prototype =
+{
+	resolve: function()
+	{
+		var query = "issn=" + this.param.issn + "&"
+				+ "title=" + encodeURI(this.param.title) + "&"
+				+ "version=" + this.param.version;
+		var http = new JKL.ParseXML(this.api + "?" + query);
+		http.setOutputArrayElements(["ssopenurl:result", "ssopenurl:linkGroup", "ssopenurl:url"]);
+		http.async(this._parse, this);
+		http.parse();
+	},
+	_parse: function (json, that)	//that = ar
+	{
+		var array = [];
+		var journals = json["ssopenurl:openURLResponse"]["ssopenurl:results"]["ssopenurl:result"];
+		for (var k = 0; k < journals.length; k++)
+		{
+			//journals[k]["ssopenurl:linkGroups"]は存在しないことも(e.g.,SB00078704,SB02071978)
+			if (!journals[k]["ssopenurl:linkGroups"])	continue;
+			var holdings = journals[k]["ssopenurl:linkGroups"]["ssopenurl:linkGroup"];
+			for (var i = 0; i < holdings.length; i++)
+			{
+				var hash = {};
+				var holding = holdings[i];
+				if (holding["type"] !== "holding")	continue;
+				//url
+				var urls = holding["ssopenurl:url"];
+				for (var j = 0; j < urls.length; j++)
+				{
+					if (urls[j]["type"] === "journal")
+					{
+						hash["url"] = urls[j]["#text"];
+						break;
+					}
+				}
+				//other data
+				var holdingData = holding["ssopenurl:holdingData"];
+				hash["databaseName"] = holdingData["ssopenurl:databaseName"];
+				hash["databaseId"] = holdingData["ssopenurl:databaseId"];
+				hash["providerName"] = holdingData["ssopenurl:providerName"];
+				var normalizedData = holdingData["ssopenurl:normalizedData"];
+				if (normalizedData)	//e.g., SB03028323
+				{
+					hash["startDate"] = normalizedData["ssopenurl:startDate"];
+					hash["endDate"] = (normalizedData["ssopenurl:endDate"]) ? 
+										normalizedData["ssopenurl:endDate"] : "Present";
+				}
+				array.push(hash);
+			}
+		}
+		//startDateも入れたほうがいいかも
+		array.sort(function(a, b){ return (a.endDate < b.endDate); });
+		
+		//もともとのコールバック関数に渡す
+		that.callback(array);
+	}
+};
 
-//View: TransparentLayerBuilder
+/* ------------------------------------------------------------- */
+/*   View                                                        */
+/* ------------------------------------------------------------- */
+//渡されたものを表示する
 var TransparentLayerBuilder = function(s)
 {
-	this.root = s.root;
+	this.ns = s.ns;
+	this.display = s.display;
 	this.text = s.text;
-	this.btn = s.btn;
-	this.style = s.style;
-	return this;
+	this.img = s.img;
+	this.css = s.css;
 }
 TransparentLayerBuilder.prototype =
 {
@@ -137,40 +185,37 @@ TransparentLayerBuilder.prototype =
 		var link = document.createElement("link");
 			link.rel = "stylesheet";
 			link.type = "text/css";
-			link.href = this.style;
+			link.href = this.css;
 		document.getElementsByTagName("head")[0].appendChild(link);
 		
-		//<div id="this.divTagId.root">
-		//  <div id="this.divTagId.text"><!-- with innerHTML --></div>
-		//  <div id="this.divTagId.btn"><!-- with background-image --></div>
+		//<div id="autoResolver">
+		//  <div id="arText"><!-- with innerHTML --></div>
+		//  <div id="arBtn"><!-- with background-image --></div>
 		//</div>
 		var rootDiv = document.createElement("div");
-			rootDiv.id = this.root.id;
-			rootDiv.style.display = this.root.display;
+			rootDiv.id = this.ns;
+			rootDiv.style.display = this.display;
 		var textDiv = document.createElement("div");
-			textDiv.id = this.text.id;
-			textDiv.innerHTML = this.text.text;
+			textDiv.id = "arText";	//this.ns + "-Text";
+			textDiv.innerHTML = this.text;
 		var btnDiv = document.createElement("div");
-			btnDiv.id = this.btn.id;
-			btnDiv.style.backgroundImage = "url(\"" + this.btn.img.close + "\")";
-			//btnDiv.innerHTML = "-";
-			btnDiv.img = this.btn.img;//肝
+			btnDiv.id = "arBtn";	//this.ns + "-Btn";
+			btnDiv.style.backgroundImage = "url(\"" + this.img.close + "\")";
+			btnDiv.img = this.img;//肝
 			btnDiv.onclick = function(){
-				//console.log(textDiv.style.display);
 				if (textDiv.style.display == "none")
 				{
 					textDiv.style.display = "block";
 					btnDiv.style.backgroundImage = "url(\"" + this.img.close + "\")";
-					//btnDiv.innerHTML = "-";
 				}
 				else
 				{
 					textDiv.style.display = "none";
 					btnDiv.style.backgroundImage = "url(\"" + this.img.open + "\")";
-					//btnDiv.innerHTML = "+";
 				}
 			};
 		
+		//DOMツリーに追加
 		rootDiv.appendChild(textDiv);
 		rootDiv.appendChild(btnDiv);
 		document.getElementsByTagName("body")[0].appendChild(rootDiv);
@@ -179,183 +224,78 @@ TransparentLayerBuilder.prototype =
 	},
 	show: function()
 	{
-		document.getElementById(this.root.id).style.display = "block";
+		document.getElementById(this.ns).style.display = "block";
 		return this;
 	}
 };
 
 /* ------------------------------------------------------------- */
-
-//Model: AutoResolver
-var AutoResolver = function(s)
+/*   Scraper w/ private functions                                */
+/* ------------------------------------------------------------- */
+//Controllerで使うのはこれだけ
+function kulineScrape()
 {
-	this.api = s.api;
-	this.param = s.param;
-	return this;
-};
-AutoResolver.prototype =
-{
-	resolve: function()
-	{
-		var array = [];
-		
-		var query = ((this.param.issn) ? "issn=" + this.param.issn + "&" : "") 
-					+ "title=" + encodeURI(this.param.title) 
-					+ "&version=" + this.param.version;
-		
-		//Call API
-		var httpObj = new JKL.ParseXML(this.api + "?" + query);
-		var json = httpObj.parse();
-		
-		//var linkGroups = json["ssopenurl:openURLResponse"]["ssopenurl:results"]["ssopenurl:result"]["ssopenurl:linkGroups"];
-		var result = json["ssopenurl:openURLResponse"]["ssopenurl:results"]["ssopenurl:result"];
-		var linkGroups = (result.length > 1) ? result[0]["ssopenurl:linkGroups"] : result["ssopenurl:linkGroups"];
-		
-		if (linkGroups)
-		{
-			var linkGroup = _toArray(linkGroups["ssopenurl:linkGroup"]);
-			for (var i = 0; i < linkGroup.length; i++)
-			{
-				var hash = {};
-				
-				if (linkGroup[i]["type"] !== "holding") { continue; }
-				
-				//url
-				var u = _toArray(linkGroup[i]["ssopenurl:url"]);
-				for (var j = 0; j < u.length; j++)
-				{
-					if (u[j]["type"] == "journal")
-					{
-						hash["url"] = u[j]["#text"];
-						break;
-					}
-				}
-				
-				//other data
-				var holdingData = linkGroup[i]["ssopenurl:holdingData"];
-				//if(!holdingData){ continue; }	//00928674
-				hash["databaseName"] = holdingData["ssopenurl:databaseName"];
-				hash["databaseId"] = holdingData["ssopenurl:databaseId"];
-				//hash["providerName"] = holdingData["ssopenurl:providerName"];
-				if (holdingData["ssopenurl:normalizedData"])	//SB03028323
-				{
-					hash["startDate"] = holdingData["ssopenurl:normalizedData"]["ssopenurl:startDate"];
-					hash["endDate"] = holdingData["ssopenurl:normalizedData"]["ssopenurl:endDate"] ? holdingData["ssopenurl:normalizedData"]["ssopenurl:endDate"] : "Present";
-				}
-				array.push(hash);
-			}
-			array.sort(function(a, b){ return (a.endDate < b.endDate); });
-		}
-		
-		return array;
-	}
-};
-
-//cattpを調べる
-//<font class="info">雑誌情報</font>
-//<font class="info">SerialsInformation</font>
-function _getCattp()
-{
-	var cattp =
-	{
-		ja:
-		{
-			"図書" : "BB",
-			"雑誌" : "SB",
-			"電子ブック" : "EB",
-			"電子ジャーナル" : "EJ"
-		},
-		en:
-		{
-			"Books" : "BB",
-			"Serials" : "SB",
-			"E-books" : "EB",
-			"E-journals" : "EJ"
-		}
+	var bib = {
+		issn: _getISSN(),
+		title: _getTitle(),
+		cattp: _getCattp(),
+		bibid: document.catsrhform.pkey.value
 	};
-	
-	var info = '';
-	try
-	{
-		info = document.getElementsByClassName('info')[0].innerHTML;
-	}
-	catch(e)
-	{
-		//prototype.js
-		info = document.getElementsByClassName('info').entries()[0].innerHTML;
-	}
-	
-	if (info.match(/(.*)情報/)){
-		return cattp.ja[RegExp.$1];
-	} else if (info.match(/(.*)Information/)){
-		return cattp.en[RegExp.$1];
-	} else {
-		return 'undefined';
-	}
+	bib.isBlack = _checkBlack(bib.title);
+	return bib;
 }
 
-//書誌IDを抜き出す
-//<font class="hdl_sub">&nbsp;&lt;SB00065349&gt;</font>
-function _getBibid()
-{
-	return document.catsrhform.pkey.value;
-}
-
-//ISSNを抜き出す
-//Operaではうまくいかない
+//ISSN
 function _getISSN()
 {
-	var issn = '';
-	
-	//IE
-	if (document.all)
-	{
+	if (document.all)	//IE
 		document.body.innerText.match(/ISSN([0-9X]{8})/);
-	}
-	//Firefox, Safari, Opera
-	else
-	{
+	else	//Firefox,Safari,(Operaではうまくいかない)
 		document.body.innerHTML.match(/<div class=\"lst_value\">\s+([0-9X]{8})/);
-	}
-	issn = RegExp.$1;
-
-	return issn.match(/^[0-9X]{8}$/) ? issn : '';
+	return RegExp.$1;
 }
 
 //<div class="hdl_main">&nbsp;&nbsp;キネマ旬報 / キネマ旬報社編. </div>
 //⇒ キネマ旬報
 function _getTitle()
 {
-	var tr = '';
-	var t = '';
-	
+	var tr = document.getElementsByClassName('hdl_main')[0].innerHTML;
+	//document.getElementsByClassName('hdl_main').entries()[0].innerHTML;
 	var ws = (navigator.userAgent.match(/(Safari|Opera)/)) ? "  " : "&nbsp;&nbsp;";
-	
-	try
-	{	//Firefox, Safari, Opera
-		tr = document.getElementsByClassName('hdl_main')[0].innerHTML;
-	}
-	catch(e)
-	{
-		//IE (depends on prototype.js)
-		tr = document.getElementsByClassName('hdl_main').entries()[0].innerHTML;
-	}
 	tr = tr.substring(ws.length, tr.length - 2);
-	t = (tr.match(/\//)) ? tr.split(" / ")[0] : tr;
-	
-	//normalize
+	var t = (tr.match(/\//)) ? tr.split(" / ")[0] : tr;
 	t = t.split(" = ")[0];
 	t = t.split(" ; ")[0];
 	t = t.split(" : ")[0];
-	
 	return t;
 }
 
-//non-array to array
-function _toArray(a)
+//特定のタイトルではリゾルブしない
+function _checkBlack(title)
 {
-	return (a instanceof Array) ? a : [a];
+	for (var i = 0; i < BLACKLIST.length; i++)
+	{
+		if (title === BLACKLIST[i])	return 1;	//black
+	}
+	return 0;	//white
 }
+
+//cattpを調べる
+//<font class="info">雑誌情報</font>
+//<font class="info">SerialsInformation</font>
+function _getCattp()
+{
+	document.getElementsByClassName('info')[0].innerHTML.match(/(.*)(情報|Information)/);
+	return {
+		"図書" : "BB",
+		"雑誌" : "SB",
+		"電子ブック" : "EB",
+		"電子ジャーナル" : "EJ",
+		"Books" : "BB",
+		"Serials" : "SB",
+		"E-books" : "EB",
+		"E-journals" : "EJ"
+	}[RegExp.$1] || 'undefined';
+}
+
 /* ------------------------------------------------------------- */
-
-
