@@ -13,7 +13,6 @@ BLACKLIST = [
 	'Bulletin',
 	'ESP'
 	//'Annual Report',
-	//'',
 ];
 
 var page = "/webopac/147";
